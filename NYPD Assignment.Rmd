@@ -1,0 +1,178 @@
+---
+title: "NYPD Shooting Incident Data Report"
+author: "Data Science Student"
+date: "06/03/2023"
+output: 
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+List of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year.
+
+This is analysis of NYPD Shooting Incident Data. The objective of this exercise is to analyze the data and
+try to answer some questions 
+
+## Step 0: Import Library
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+library(lubridate)
+```
+
+## Step 1: Load Data
+
+* `read_csv()` reads comma delimited files, read_csv2() reads semicolon separated files (common in countries where , is used as the decimal place), read_tsv() reads tab delimited files, and read_delim() reads in files with any delimiter.
+
+```{r load}
+df = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df)
+```
+
+## Step 2: Tidy and Transform Data
+
+Let's first eliminate the columns I do not need for this assignment, which are: **PRECINCT**,**JURISDICTION_CODE**,**LOCATION_DESC**, **X_COORD_CD**, **Y_COORD_CD**, and **Lon_Lat**. 
+
+```{r}
+df_2 = df %>% select(INCIDENT_KEY, 
+                   OCCUR_DATE,
+                   OCCUR_TIME,
+                   BORO, 
+                   STATISTICAL_MURDER_FLAG,
+                   PERP_AGE_GROUP,
+                   PERP_SEX,
+                   PERP_RACE,
+                   VIC_AGE_GROUP,
+                   VIC_SEX,
+                   VIC_RACE,
+                   Latitude,
+                   Longitude)
+
+# Return the column name along with the missing values
+lapply(df_2, function(x) sum(is.na(x)))
+```
+
+Understanding the reasons why data are missing is important for handling the remaining data correctly. There's a fair amount of unidentifiable data on perpetrators (age, race, or sex.) Those cases are possibly still active and ongoing investigation. In fear of missing meaningful information, I handle this group of missing data by calling them as another group of "Unknown". 
+
+Key observations on data type conversion are:
+
+* **INCIDENT_KEY** should be treated as a string.
+* **BORO** should be treated as a factor.
+* **PERP_AGE_GROUP** should be treated as a factor.
+* **PERP_SEX** should be treated as a factor.
+* **PERP_RACE** should be treated as a factor.
+* **VIC_AGE_GROUP** should be treated as a factor.
+* **VIC_SEX** should be treated as a factor.
+* **VIC_RACE** should be treated as a factor.
+
+```{r}
+# Tidy and transform data
+df_2 = df_2 %>% 
+  replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown"))
+
+# Remove extreme values in data
+df_2 = subset(df_2, PERP_AGE_GROUP!="1020" & PERP_AGE_GROUP!="224" & PERP_AGE_GROUP!="940")
+
+df_2$PERP_AGE_GROUP = recode(df_2$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+df_2$PERP_SEX = recode(df_2$PERP_SEX, U = "Unknown")
+df_2$PERP_RACE = recode(df_2$PERP_RACE, UNKNOWN = "Unknown")
+df_2$VIC_SEX   = recode(df_2$VIC_SEX, U = "Unknown")
+df_2$VIC_RACE   = recode(df_2$VIC_RACE, UNKNOWN = "Unknown")
+df_2$INCIDENT_KEY = as.character(df_2$INCIDENT_KEY)
+df_2$BORO = as.factor(df_2$BORO)
+df_2$PERP_AGE_GROUP = as.factor(df_2$PERP_AGE_GROUP)
+df_2$PERP_SEX = as.factor(df_2$PERP_SEX)
+df_2$PERP_RACE = as.factor(df_2$PERP_RACE)
+df_2$VIC_AGE_GROUP = as.factor(df_2$VIC_AGE_GROUP)
+df_2$VIC_SEX = as.factor(df_2$VIC_SEX)
+df_2$VIC_RACE = as.factor(df_2$VIC_RACE)
+
+# Return summary statistics
+summary(df_2)
+```
+
+## Step 3: Add Visualizations and Analysis
+
+**Question**
+
+1. Which part of New York has the most number of incidents? Of those incidents, how many are murder cases? 
+
+Brooklyn is the 1st in terms of the number of incidents, followed by Bronx and Queens respectively. Likewise, the number of murder cases follows the same pattern as that of incidents.
+
+```{r}
+g <- ggplot(df_2, aes(x = BORO)) +
+  geom_bar() +
+  labs(title = "Boroughs of New York City",
+       x = "Boroughs of New York City",
+       y = "Count of Incidents") +
+  theme_minimal()
+g
+```
+
+```{r}
+table(df_2$BORO, df_2$STATISTICAL_MURDER_FLAG)
+```
+2. Which day and time should people in New York be cautious of falling into victims of crime?
+
+* Weekends in NYC have the most chances of incidents. Be cautious! 
+* Incidents historically happen in the evening and night time. If there's nothing urgent, recommend people staying at home! 
+
+```{r}
+df_2$OCCUR_DAY = mdy(df_2$OCCUR_DATE)
+df_2$OCCUR_DAY = wday(df_2$OCCUR_DAY, label = TRUE)
+df_2$OCCUR_HOUR = hour(hms(as.character(df_2$OCCUR_TIME)))
+
+df_3 = df_2 %>%
+  group_by(OCCUR_DAY) %>%
+  count()
+
+df_4 = df_2 %>%
+  group_by(OCCUR_HOUR) %>%
+  count()
+```
+
+```{r}
+g <- ggplot(df_3, aes(x = OCCUR_DAY, y = n)) +
+  geom_col() +
+  labs(title = "Which day should people in New York be cautious of incidents?",
+       x = "Incident Occurence Day",
+       y = "Count of Incidents") +
+  theme_minimal()
+g
+```
+```{r}
+g <- ggplot(df_4, aes(x = OCCUR_HOUR, y = n)) +
+  geom_line() +
+  labs(title = "Which time should people in New York be cautious of incidents?",
+       x = "Incident Occurence Hour",
+       y = "Count of Incidents") +
+  theme_minimal()
+g
+```
+
+
+4.Modeling
+It will be interesting to find out if a specific BORO has more importance on the number of incidences. In order to identify this significance, a linear regression model is created to find the cooeficients of BORO values on incidences. In order to do this, new dataframe is created with number of incidences
+
+```{r}
+# Linear Model 
+nypd_trim_data <- df %>% group_by(OCCUR_DATE,BORO,PERP_AGE_GROUP, PERP_SEX, PERP_RACE,VIC_AGE_GROUP)
+nypd_model <-lm(INCIDENT_KEY ~ BORO, data = nypd_trim_data)
+summary(nypd_model)
+                                      
+```
+
+Analysis: Since BORO is a factor, the first BORO that is BRONX is considered as Intercept. Note that this was something I had to dig and find out because I was confused why BRONX was not showing up. It is clear from p-values that BRONX, BROOKLYN and MANHATTAN maybe having similar impact on number of incidences. That is a person being in these BOROs could make a difference to the number of incidences.
+
+## Step 4: Identify Bias
+
+When I saw this subject, I wanted to avoid any inference based on Race to avoid any internal biases that I might have. Also, I avoided using any data that could have missing information or Unknown data since more bias could be introduced owing to the same. During some internal analysis, I did observe not defining Perpetrator Sex (Unknown) actually could lead to misleading information. Also, the linear regression model’s interpretation based on such simple data may not show the entire picture. More complex features and data need to be added to remove disturbing noises from interpretations. For instance adding proper perpertrator and victim information could give more insightful information. However, we need more clear data for the same.
+
+``` {r session_info}
+sessionInfo()
+
+```
